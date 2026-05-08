@@ -25,7 +25,7 @@ SPAR3D is based on [Stable Fast 3D](https://github.com/Stability-AI/stable-fast-
 Ensure your environment is:
 - Python >= 3.8 (Depending on PyTorch version >3.9)
 - Optional: CUDA or MPS has to be available
-- For Windows **(experimental)**: Visual Studio 2022
+- For Windows **(experimental)**: MSVC (VS 2022 or [C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with **Desktop development with C++**). Native extensions (`texture_baker`, `uv_unwrapper`) need `cl.exe` on `PATH`; from PowerShell in the repo root run **`. .\\scripts\\init_msvc_env.ps1`** before `pip install`, or use **x64 Native Tools Command Prompt for VS 2022**.
 - For Mac (MPS) **(experimental)**: OSX 15.2 (Sequoia) and above
 - Has PyTorch installed according to your platform: https://pytorch.org/get-started/locally/ [Make sure the Pytorch CUDA version matches your system's.]
 - Update setuptools by `pip install -U setuptools==69.5.1`
@@ -49,8 +49,11 @@ To run SPAR3D with low VRAM mode, set the environment variable `SPAR3D_LOW_VRAM=
 
 ### Windows Support **(experimental)**
 
-To run Stable Fast 3D on Windows, you must install Visual Studio (currently tested on VS 2022) and the appropriate PyTorch and CUDA versions.
-Then, follow the installation steps as mentioned above.
+Install a C++ toolchain (VS 2022 or Build Tools with the **Desktop development with C++** workload) and matching PyTorch/CUDA for your GPU.
+
+**Cursor / normal PowerShell:** Build Tools do not add `cl.exe` to your default `PATH`. Dot-source `scripts/init_msvc_env.ps1` in the same session before `pip install -r requirements.txt` (it sets **`DISTUTILS_USE_SDK=1`**, which PyTorch’s `cpp_extension` requires when MSVC is active—without it, `texture_baker` / `uv_unwrapper` wheels fail). Or run `pip` from **x64 Native Tools Command Prompt for VS 2022** and set `$env:DISTUTILS_USE_SDK = "1"` yourself.
+
+**Avoiding flaky `git clone` from GitHub:** This repo vendors `alpha_clip` under `third_party/alpha_clip_vendor/` (see `requirements.txt`) so `pip` does not need to fetch AlphaCLIP over Git during install.
 
 Note that Windows support is **experimental** and not guaranteed to give the same performance and/or quality as Linux.
 

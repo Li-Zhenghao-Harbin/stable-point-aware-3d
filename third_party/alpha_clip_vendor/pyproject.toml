@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alpha-clip"
+version = "1.0.0"
+description = "Vendored Alpha-CLIP (upstream: https://github.com/SunzeY/AlphaCLIP)."
+requires-python = ">=3.9"
+dependencies = [
+    "ftfy",
+    "regex",
+    "tqdm",
+    "torch",
+    "torchvision",
+    "loralib>=0.1.0",
+    "packaging",
+    "Pillow",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["alpha_clip*"]
+
+[tool.setuptools.package-data]
+alpha_clip = ["bpe_simple_vocab_16e6.txt.gz"]

@@ -1,0 +1,6 @@
+This directory vendors the Alpha-CLIP Python package from:
+https://github.com/SunzeY/AlphaCLIP (Apache-2.0).
+
+Source files were fetched from the upstream repository for installs that
+cannot reliably use git/GitHub (network) or the upstream setup.py
+(pkg_resources) with modern pip/setuptools.

@@ -1,8 +1,10 @@
 import argparse
 import os
+import sys
 from contextlib import nullcontext
 
 import torch
+from huggingface_hub.utils import GatedRepoError
 from PIL import Image
 from tqdm import tqdm
 from transparent_background import Remover
@@ -107,12 +109,25 @@ if __name__ == "__main__":
 
     print("Device used: ", device)
 
-    model = SPAR3D.from_pretrained(
-        args.pretrained_model,
-        config_name="config.yaml",
-        weight_name="model.safetensors",
-        low_vram_mode=args.low_vram_mode,
-    )
+    try:
+        model = SPAR3D.from_pretrained(
+            args.pretrained_model,
+            config_name="config.yaml",
+            weight_name="model.safetensors",
+            low_vram_mode=args.low_vram_mode,
+        )
+    except GatedRepoError as err:
+        print(
+            "\n[Hugging Face] 无法下载模型：该仓库为 gated，需要先在网页同意条款并拥有访问权限，"
+            "再用有效 token 登录。\n"
+            "  1) 打开并申请访问: https://huggingface.co/stabilityai/stable-point-aware-3d\n"
+            "  2) 创建 read token: https://huggingface.co/settings/tokens\n"
+            "  3) 终端执行: huggingface-cli login\n"
+            "     或 (PowerShell) 设置: $env:HF_TOKEN = \"<你的token>\"\n"
+            "  若模型已克隆到本机目录，可加: --pretrained-model <本地路径>\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from err
     model.to(device)
     model.eval()
 
