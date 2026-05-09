@@ -22,6 +22,8 @@ tb_float2 triangle_centroid(const tb_float2 &v0, const tb_float2 &v1,
 
 float BVH::find_best_split_plane(const BVHNode &node, int &best_axis,
                                  int &best_pos, AABB &centroidBounds) {
+  best_axis = 0;
+  best_pos = 0;
   float best_cost = std::numeric_limits<float>::max();
 
   for (int axis = 0; axis < 2; ++axis) // We use 2 as we have only x and y
@@ -41,8 +43,9 @@ float BVH::find_best_split_plane(const BVHNode &node, int &best_axis,
 #ifndef _MSC_VER
     if (__builtin_cpu_supports("sse"))
 #elif (defined(_M_AMD64) || defined(_M_X64))
-    // SSE supported on Windows
-    if constexpr (true)
+    // On Windows this SSE fast path has produced access violations in some
+    // environments; use the scalar fallback for stability.
+    if constexpr (false)
 #endif
     {
       __m128 min4[BINS], max4[BINS];
@@ -142,8 +145,9 @@ void BVH::update_node_bounds(BVHNode &node, AABB &centroidBounds) {
 #ifndef _MSC_VER
   if (__builtin_cpu_supports("sse"))
 #elif (defined(_M_AMD64) || defined(_M_X64))
-  // SSE supported on Windows
-  if constexpr (true)
+  // On Windows this SSE fast path has produced access violations in some
+  // environments; use the scalar fallback for stability.
+  if constexpr (false)
 #endif
   {
     __m128 min4 = _mm_set_ps1(1e30f), max4 = _mm_set_ps1(-1e30f);
@@ -360,6 +364,9 @@ bool barycentric_coordinates(tb_float2 xy, tb_float2 v1, tb_float2 v2,
 
   // Calculate the barycentric coordinates
   float denom = d00 * d11 - d01 * d01;
+  if (std::fabs(denom) < 1e-20f) {
+    return false;
+  }
   v = (d11 * d20 - d01 * d21) / denom;
   w = (d00 * d21 - d01 * d20) / denom;
   u = 1.0f - v - w;
@@ -431,7 +438,11 @@ torch::Tensor rasterize_cpu(torch::Tensor uv, torch::Tensor indices,
   auto start = std::chrono::high_resolution_clock::now();
 #endif
 
+// On Windows, raw OpenMP parallel regions inside PyTorch custom ops can
+// deadlock with the runtime thread pool; keep this loop serial on _WIN32.
+#if !defined(_WIN32)
 #pragma omp parallel for
+#endif
   for (int idx = 0; idx < num_pixels; ++idx) {
     int x = idx / height;
     int y = idx % height;
@@ -482,7 +493,9 @@ torch::Tensor interpolate_cpu(torch::Tensor attr, torch::Tensor indices,
 
   int num_pixels = width * height;
 
+#if !defined(_WIN32)
 #pragma omp parallel for
+#endif
   for (int idx = 0; idx < num_pixels; ++idx) {
     int idx_ = idx * 4; // Index into the float4 array (4 floats per pixel)
     tb_float3 barycentric = {

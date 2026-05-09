@@ -50,6 +50,9 @@ namespace texture_baker_cpp
         float d21 = xyv1.x * v1v3.x + xyv1.y * v1v3.y;
 
         float denom = d00 * d11 - d01 * d01;
+        if (fabsf(denom) < 1e-20f) {
+            return false;
+        }
         v = (d11 * d20 - d01 * d21) / denom;
         w = (d00 * d21 - d01 * d20) / denom;
         u = 1.0f - v - w;
@@ -199,7 +202,8 @@ namespace texture_baker_cpp
         auto start = std::chrono::high_resolution_clock::now();
 #endif
         constexpr int block_size = 16 * 16;
-        int grid_size = bake_resolution * bake_resolution / block_size;
+        const int num_pixels = static_cast<int>(bake_resolution * bake_resolution);
+        int grid_size = (num_pixels + block_size - 1) / block_size;
         dim3 block_dims(block_size, 1, 1);
         dim3 grid_dims(grid_size, 1, 1);
 
@@ -268,7 +272,9 @@ namespace texture_baker_cpp
         auto start = std::chrono::high_resolution_clock::now();
 #endif
         constexpr int block_size = 16 * 16;
-        int grid_size = rast.size(0) * rast.size(0) / block_size;
+        const int num_pixels =
+            static_cast<int>(rast.size(0) * rast.size(1));
+        int grid_size = (num_pixels + block_size - 1) / block_size;
         dim3 block_dims(block_size, 1, 1);
         dim3 grid_dims(grid_size, 1, 1);
 

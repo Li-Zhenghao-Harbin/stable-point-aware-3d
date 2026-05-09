@@ -166,5 +166,8 @@ cython_debug/
 stabilityai/
 output/
 
+# source files
+/demo_files/examples/*
+
 # model files
 model.safetensors
