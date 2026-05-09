@@ -32,6 +32,11 @@ Ensure your environment is:
 - Install wheel by `pip install wheel`
 
 Then, install the remaining requirements with `pip install -r requirements.txt`.
+
+**Large HF downloads / slow network:** `run.py` sets `HF_HUB_DOWNLOAD_TIMEOUT` to 600s if unset. For very slow links, set e.g. `HF_HUB_DOWNLOAD_TIMEOUT=3600` (or use `huggingface-cli download` to resume into the cache).
+
+**NVIDIA GPU:** CPU-only PyTorch gives `torch.cuda.is_available() == False`. After `pip install -r requirements.txt`, run **`pip install -r requirements-cuda.txt`** (uses **`--index-url`** so pip does not pick CPU `torch` from PyPI; defaults to **cu124**—edit that URL in the file if needed, per [pytorch.org](https://pytorch.org/get-started/locally/)), then use `--device cuda`.
+
 If remeshing is required, install the additional requirements with `pip install -r requirements-remesh.txt`.
 For the gradio demo, an additional `pip install -r requirements-demo.txt` is required.
 

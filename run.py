@@ -1,8 +1,15 @@
-import argparse
+# Set HF hub timeouts before huggingface_hub (pulled in via spar3d.system) reads constants.
 import os
 import sys
+
+# huggingface_hub defaults HF_HUB_DOWNLOAD_TIMEOUT to 10s — too low for multi-GB weights on slow links.
+if os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT") is None:
+    os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "600"
+
+import argparse
 from contextlib import nullcontext
 
+import requests
 import torch
 from huggingface_hub.utils import GatedRepoError
 from PIL import Image
@@ -30,7 +37,10 @@ if __name__ == "__main__":
         "--device",
         default=get_device(),
         type=str,
-        help=f"Device to use. If no CUDA/MPS-compatible device is found, the baking will fail. Default: '{get_device()}'",
+        help=(
+            "Device: cuda | cuda:0 | mps | cpu. Default follows torch (cuda if available). "
+            "Use --device cuda to require GPU; install PyTorch with CUDA from pytorch.org if you see CPU only."
+        ),
     )
     parser.add_argument(
         "--pretrained-model",
@@ -95,19 +105,48 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Ensure args.device contains cuda
-    devices = ["cuda", "mps", "cpu"]
-    if not any(args.device in device for device in devices):
-        raise ValueError("Invalid device. Use cuda, mps or cpu")
+    requested = args.device
+    use_cuda = requested == "cuda" or requested.startswith("cuda:")
+    use_mps = requested == "mps"
+    if not (use_cuda or use_mps or requested == "cpu"):
+        raise ValueError("Invalid device. Use cuda, cuda:N, mps or cpu")
 
     output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    device = args.device
-    if not (torch.cuda.is_available() or torch.backends.mps.is_available()):
+    if use_cuda:
+        if not torch.cuda.is_available():
+            print(
+                "\n[设备] 使用了 --device cuda，但 torch.cuda.is_available() 为 False，无法使用 GPU。\n"
+                "  常见原因：当前环境是 CPU 版 PyTorch。请先检查：\n"
+                '    python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.version.cuda)"\n'
+                "  在本仓库根目录可一键重装带 CUDA 的 torch（默认 cu124，可按需改 requirements-cuda.txt 里的索引）：\n"
+                "    pip install -r requirements-cuda.txt\n"
+                "  或按官网自行选择 CUDA 版本：\n"
+                "    https://pytorch.org/get-started/locally/\n",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        device = requested
+    elif use_mps:
+        if not torch.backends.mps.is_available():
+            print(
+                "\n[设备] 指定了 mps，但当前 PyTorch/系统不支持 MPS。\n",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        device = "mps"
+    elif requested == "cpu":
         device = "cpu"
+    else:
+        raise ValueError("Invalid device. Use cuda, cuda:N, mps or cpu")
 
-    print("Device used: ", device)
+    print("Device used:", device)
+    if device == "cpu":
+        print(
+            "[提示] 正在使用 CPU。若本机有 NVIDIA GPU，请安装 CUDA 版 PyTorch 后用 --device cuda。",
+            file=sys.stderr,
+        )
 
     try:
         model = SPAR3D.from_pretrained(
@@ -127,6 +166,22 @@ if __name__ == "__main__":
             "  若模型已克隆到本机目录，可加: --pretrained-model <本地路径>\n",
             file=sys.stderr,
         )
+        raise SystemExit(1) from err
+    except (requests.exceptions.RequestException, OSError) as err:
+        err_s = str(err).lower()
+        if any(
+            x in err_s or x in type(err).__name__.lower()
+            for x in ("timeout", "incompleteread", "connection", "chunked", "ssl")
+        ):
+            print(
+                "\n[Hugging Face] 下载权重失败（网络超时或中断）。model.safetensors 约 7GB，弱网容易断。\n"
+                "  可加大超时后重试（PowerShell）：\n"
+                '    $env:HF_HUB_DOWNLOAD_TIMEOUT = "3600"\n'
+                "  或使用官方 CLI 断点续传到缓存后再运行：\n"
+                "    huggingface-cli download stabilityai/stable-point-aware-3d model.safetensors config.yaml\n"
+                "  若已有人工下载的目录，使用: --pretrained-model <含 config.yaml 与 model.safetensors 的文件夹>\n",
+                file=sys.stderr,
+            )
         raise SystemExit(1) from err
     model.to(device)
     model.eval()
@@ -158,14 +213,13 @@ if __name__ == "__main__":
             handle_image(image_path, idx)
             idx += 1
 
+    # reduction_count_type / target_count exist only when gpytoolbox or pynanoinstantmeshes is installed.
+    reduction_type = getattr(args, "reduction_count_type", "keep")
+    target_cnt = getattr(args, "target_count", 2000)
     vertex_count = (
         -1
-        if args.reduction_count_type == "keep"
-        else (
-            args.target_count
-            if args.reduction_count_type == "vertex"
-            else args.target_count // 2
-        )
+        if reduction_type == "keep"
+        else (target_cnt if reduction_type == "vertex" else target_cnt // 2)
     )
 
     for i in tqdm(range(0, len(images), args.batch_size)):
@@ -174,8 +228,11 @@ if __name__ == "__main__":
             torch.cuda.reset_peak_memory_stats()
         with torch.no_grad():
             with (
-                torch.autocast(device_type=device, dtype=torch.bfloat16)
-                if "cuda" in device
+                torch.autocast(
+                    device_type="cuda" if device.startswith("cuda") else device,
+                    dtype=torch.bfloat16,
+                )
+                if device.startswith("cuda")
                 else nullcontext()
             ):
                 mesh, glob_dict = model.run_image(

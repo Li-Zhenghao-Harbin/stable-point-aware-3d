@@ -1,0 +1,10 @@
+# Force CUDA wheels from PyTorch (NOT PyPI CPU builds). Change cu124 -> cu121/cu126/cu128 per:
+#   https://pytorch.org/get-started/locally/
+# Run AFTER: pip install -r requirements.txt
+#
+# If this file still gives CPU torch, run manually:
+#   pip uninstall -y torch torchvision torchaudio
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+--index-url https://download.pytorch.org/whl/cu128
+torch
+torchvision
