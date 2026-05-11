@@ -10,7 +10,7 @@ import trimesh
 from einops import rearrange
 from huggingface_hub import hf_hub_download
 from jaxtyping import Float
-from omegaconf import OmegaConf
+from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from safetensors.torch import load_file, load_model
 from torch import Tensor
@@ -119,6 +119,50 @@ class SPAR3D(BaseModule):
 
     cfg: Config
 
+    @staticmethod
+    def _is_local_dinov2_dir(path: str) -> bool:
+        if not path or not os.path.isdir(path):
+            return False
+        has_config = os.path.isfile(os.path.join(path, "config.json"))
+        has_weights = os.path.isfile(os.path.join(path, "model.safetensors")) or os.path.isfile(
+            os.path.join(path, "pytorch_model.bin")
+        )
+        return has_config and has_weights
+
+    @classmethod
+    def _override_tokenizer_dinov2_path(
+        cls, cfg: DictConfig, pretrained_model_name_or_path: str, base_dir: str
+    ) -> None:
+        candidates: list[str] = []
+
+        if pretrained_model_name_or_path and os.path.isabs(pretrained_model_name_or_path):
+            candidates.append(os.path.join(pretrained_model_name_or_path, "dinov2-large"))
+        elif pretrained_model_name_or_path:
+            candidates.append(
+                os.path.join(base_dir, pretrained_model_name_or_path, "dinov2-large")
+            )
+
+        candidates.extend(
+            [
+                os.path.join(base_dir, "checkpoints", "dinov2-large"),
+                os.path.join(base_dir, "dinov2-large"),
+            ]
+        )
+
+        local_dinov2 = next(
+            (path for path in candidates if cls._is_local_dinov2_dir(path)),
+            None,
+        )
+        if local_dinov2 is None:
+            return
+
+        if "image_tokenizer" in cfg and isinstance(cfg.image_tokenizer, DictConfig):
+            cfg.image_tokenizer["pretrained_model_name_or_path"] = local_dinov2
+        if "pdiff_image_tokenizer" in cfg and isinstance(
+            cfg.pdiff_image_tokenizer, DictConfig
+        ):
+            cfg.pdiff_image_tokenizer["pretrained_model_name_or_path"] = local_dinov2
+
     @classmethod
     def from_pretrained(
         cls,
@@ -144,6 +188,11 @@ class SPAR3D(BaseModule):
             )
 
         cfg = OmegaConf.load(config_path)
+        cls._override_tokenizer_dinov2_path(
+            cfg=cfg,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            base_dir=base_dir,
+        )
         OmegaConf.resolve(cfg)
         # Add in low_vram_mode to the config
         if os.environ.get("SPAR3D_LOW_VRAM", "0") == "1" and torch.cuda.is_available():
