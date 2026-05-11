@@ -167,5 +167,6 @@ stabilityai/
 output/
 
 # checkpoints
+checkpoints/dinov2-large/
 checkpoints/*.yaml
 checkpoints/*.safetensors
