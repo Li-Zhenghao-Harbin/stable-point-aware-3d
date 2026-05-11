@@ -177,14 +177,12 @@ if __name__ == "__main__":
             images.append(image)
             idx += 1
 
+    reduction_count_type = getattr(args, "reduction_count_type", "keep")
+    target_count = getattr(args, "target_count", 2000)
     vertex_count = (
         -1
-        if args.reduction_count_type == "keep"
-        else (
-            args.target_count
-            if args.reduction_count_type == "vertex"
-            else args.target_count // 2
-        )
+        if reduction_count_type == "keep"
+        else (target_count if reduction_count_type == "vertex" else target_count // 2)
     )
 
     for i in tqdm(range(0, len(images), args.batch_size)):
