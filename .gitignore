@@ -165,3 +165,7 @@ cython_debug/
 
 stabilityai/
 output/
+
+# checkpoints
+checkpoints/*.yaml
+checkpoints/*.safetensors
