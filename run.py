@@ -19,6 +19,27 @@ def check_positive(value):
     return ivalue
 
 
+def preprocess_input_image(image_path, idx, output_dir, foreground_ratio, no_remove_bg, device, bg_remover):
+    image = Image.open(image_path).convert("RGBA")
+    needs_bg_removal = image.getextrema()[3][0] >= 255
+
+    if not no_remove_bg and needs_bg_removal:
+        if bg_remover is None:
+            try:
+                bg_remover = Remover(device=device)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Failed to initialize background remover model. "
+                    "If your input image already has transparent background, rerun with --no-remove-bg."
+                ) from exc
+        image = remove_background(image, bg_remover)
+
+    image = foreground_crop(image, foreground_ratio)
+    os.makedirs(os.path.join(output_dir, str(idx)), exist_ok=True)
+    image.save(os.path.join(output_dir, str(idx), "input.png"))
+    return image, bg_remover
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -91,6 +112,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch_size", default=1, type=int, help="Batch size for inference"
     )
+    parser.add_argument(
+        "--no-remove-bg",
+        action="store_true",
+        help="Skip background removal (recommended when input already has alpha).",
+    )
     args = parser.parse_args()
 
     # Ensure args.device contains cuda
@@ -116,20 +142,10 @@ if __name__ == "__main__":
     model.to(device)
     model.eval()
 
-    bg_remover = Remover(device=device)
+    bg_remover = None
     images = []
     idx = 0
     for image_path in args.image:
-
-        def handle_image(image_path, idx):
-            image = remove_background(
-                Image.open(image_path).convert("RGBA"), bg_remover
-            )
-            image = foreground_crop(image, args.foreground_ratio)
-            os.makedirs(os.path.join(output_dir, str(idx)), exist_ok=True)
-            image.save(os.path.join(output_dir, str(idx), "input.png"))
-            images.append(image)
-
         if os.path.isdir(image_path):
             image_paths = [
                 os.path.join(image_path, f)
@@ -137,10 +153,28 @@ if __name__ == "__main__":
                 if f.endswith((".png", ".jpg", ".jpeg"))
             ]
             for image_path in image_paths:
-                handle_image(image_path, idx)
+                image, bg_remover = preprocess_input_image(
+                    image_path=image_path,
+                    idx=idx,
+                    output_dir=output_dir,
+                    foreground_ratio=args.foreground_ratio,
+                    no_remove_bg=args.no_remove_bg,
+                    device=device,
+                    bg_remover=bg_remover,
+                )
+                images.append(image)
                 idx += 1
         else:
-            handle_image(image_path, idx)
+            image, bg_remover = preprocess_input_image(
+                image_path=image_path,
+                idx=idx,
+                output_dir=output_dir,
+                foreground_ratio=args.foreground_ratio,
+                no_remove_bg=args.no_remove_bg,
+                device=device,
+                bg_remover=bg_remover,
+            )
+            images.append(image)
             idx += 1
 
     vertex_count = (
